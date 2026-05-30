@@ -1,0 +1,9 @@
+[Unit]
+Description=NeoTrinkey Monitor
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/trinkey_app
+Restart=on-failure
+RestartSec=2
+StartLimitBurst=0
