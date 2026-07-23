@@ -7,3 +7,5 @@ ExecStart=/usr/local/bin/trinkey_app
 Restart=on-failure
 RestartSec=2
 StartLimitBurst=0
+RuntimeDirectory=trinkey
+RuntimeDirectoryMode=0755

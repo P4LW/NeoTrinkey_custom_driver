@@ -19,31 +19,42 @@ static void print_usage(const char *prog)
             prog);
 }
 
-/* Read the daemon PID from the pidfile and send SIGHUP so it reloads
- * the config. Logs a warning (not an error) if the daemon is not running,
- * since the config update is still valid.
- */
 static void notify_daemon(void)
 {
-    FILE *f = fopen(PID_FILE, "r");
+    FILE *f = fopen("/run/trinkey/trinkey.pid", "r");
     if (!f) {
-        fprintf(stderr, "warning: daemon pidfile not found (%s), "
-        "config saved but daemon not notified\n", PID_FILE);
+        fprintf(stderr, "warning: daemon not running\n");
         return;
     }
-
     int pid;
     int ok = (fscanf(f, "%d", &pid) == 1);
     fclose(f);
-
     if (!ok) {
-        fprintf(stderr, "warning: could not read PID from %s\n", PID_FILE);
+        fprintf(stderr, "warning: could not read PID\n");
         return;
     }
-
     if (kill(pid, SIGHUP) != 0)
         perror("warning: could not signal daemon");
 }
+
+// Check wether the parameters given by the user are valid
+static int valid_mode(const char *m)
+{
+    return strcmp(m, "static") == 0 ||
+    strcmp(m, "blink")  == 0 ||
+    strcmp(m, "breath") == 0;
+}
+
+static int valid_color(const char *s)
+{
+    int r, g, b;
+    if (sscanf(s, "%d %d %d", &r, &g, &b) != 3)
+        return 0;
+    return r >= 0 && r <= 255 &&
+    g >= 0 && g <= 255 &&
+    b >= 0 && b <= 255;
+}
+
 
 int main(int argc, char *argv[])
 {
@@ -62,9 +73,16 @@ int main(int argc, char *argv[])
         }
     }
 
-    if (!new_mode && !new_idle && !new_touch) {
-        fprintf(stderr, "error: no options provided\n");
-        print_usage(argv[0]);
+    if (new_mode && !valid_mode(new_mode)) {
+        fprintf(stderr, "error: invalid mode '%s' (use static, blink, breath)\n", new_mode);
+        return 1;
+    }
+    if (new_idle && !valid_color(new_idle)) {
+        fprintf(stderr, "error: invalid color '%s' (use \"R G B\" with values 0-255)\n", new_idle);
+        return 1;
+    }
+    if (new_touch && !valid_color(new_touch)) {
+        fprintf(stderr, "error: invalid color '%s'\n", new_touch);
         return 1;
     }
 

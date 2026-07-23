@@ -8,7 +8,7 @@
 #include <math.h>
 
 #define CONFIG_FILE "/etc/trinkey/config"
-#define PID_FILE    "/tmp/trinkey.pid"
+#define PID_FILE "/run/trinkey/trinkey.pid"
 
 typedef enum {
     MODE_STATIC,
@@ -73,9 +73,7 @@ static int get_touch(void)
 
 static int load_configuration(AppConfig *cfg)
 {
-    /* Defaults used both as fallback on missing file and as initial values
-     * before parsing, so unknown keys leave a sane state.
-     */
+    // Defaults used both as fallback on missing file and as initial values before parsing
     cfg->mode         = MODE_STATIC;
     cfg->color_idle[0]  = 255; cfg->color_idle[1]  = 0; cfg->color_idle[2]  = 0;
     cfg->color_touch[0] = 0;   cfg->color_touch[1] = 255; cfg->color_touch[2] = 0;
@@ -225,15 +223,11 @@ int main(void)
     if (pid_f) {
         fprintf(pid_f, "%d\n", getpid());
         fclose(pid_f);
-    } else {
-        perror("unable to create PID file (try sudo)");
     }
 
-    printf("monitoring started (send SIGHUP to reload config)\n");
+    printf("Trinkey connected.\nLed active.\n");
 
-    /* tick drives blink and breath timing at 10 Hz.
-     * unsigned avoids signed overflow after long uptimes.
-     */
+    // tick drives blink and breath timing at 10 Hz.
     unsigned int tick = 0;
 
     while (keep_running) {
@@ -284,5 +278,6 @@ int main(void)
     printf("\nexiting, turning off LED\n");
     set_led(0, 0, 0);
     unlink(PID_FILE);
+
     return 0;
 }
