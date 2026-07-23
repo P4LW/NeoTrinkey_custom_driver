@@ -20,9 +20,9 @@ struct trinkey_dev {
 };
 
 
-/* SYSFS INTERFACE                                                     */
+// SYSFS INTERFACE
 
-/* cat /sys/.../trinkey_touch — returns 0 or 1 */
+// cat /sys/.../trinkey_touch — returns 0 or 1
 static ssize_t trinkey_touch_show(struct device *dev,
                                   struct device_attribute *attr, char *buf)
 {
@@ -31,7 +31,6 @@ static ssize_t trinkey_touch_show(struct device *dev,
     int retval;
     u8 *data;
 
-    /* USB transfers require heap-allocated buffers (no stack DMA). */
     data = kmalloc(1, GFP_KERNEL);
     if (!data)
         return -ENOMEM;
@@ -48,7 +47,7 @@ static ssize_t trinkey_touch_show(struct device *dev,
 
     retval = usb_control_msg_recv(tdev->udev, 0, CMD_GET_TOUCH,
                                   USB_DIR_IN | USB_TYPE_VENDOR | USB_RECIP_DEVICE,
-                                  0, 0, data, 1, 1000, GFP_KERNEL);
+                                  0, 0, data, 1, 100, GFP_KERNEL);
     mutex_unlock(&tdev->lock);
 
     if (retval) {
@@ -62,7 +61,7 @@ static ssize_t trinkey_touch_show(struct device *dev,
     return retval;
 }
 
-/* echo "R G B" > /sys/.../trinkey_led */
+// echo "R G B" > /sys/.../trinkey_led
 static ssize_t trinkey_led_store(struct device *dev,
                                  struct device_attribute *attr,
                                  const char *buf, size_t count)
@@ -101,7 +100,7 @@ static ssize_t trinkey_led_store(struct device *dev,
 
     retval = usb_control_msg_send(tdev->udev, 0, CMD_SET_LED,
                                   USB_DIR_OUT | USB_TYPE_VENDOR | USB_RECIP_DEVICE,
-                                  0, 0, data, 3, 1000, GFP_KERNEL);
+                                  0, 0, data, 3, 100, GFP_KERNEL);
     mutex_unlock(&tdev->lock);
     kfree(data);
 
@@ -136,7 +135,7 @@ static const struct attribute_group *trinkey_groups[] = {
 
 
 
-/* USB DRIVER CORE                                                     */
+// USB DRIVER CORE
 
 static int trinkey_probe(struct usb_interface *interface,
                          const struct usb_device_id *id)

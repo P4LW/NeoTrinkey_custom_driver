@@ -29,7 +29,7 @@ volatile int reload_config  = 0;
 AppConfig config;
 
 
-/* SIGNAL HANDLING                                                     */
+// SIGNAL HANDLING
 
 static void sig_handler(int signo)
 {
@@ -40,7 +40,7 @@ static void sig_handler(int signo)
 }
 
 
-/* SYSFS I/O                                                          */
+// SYSFS I/O
 
 static void set_led(int r, int g, int b)
 {
@@ -69,7 +69,7 @@ static int get_touch(void)
 }
 
 
-/* CONFIGURATION                                                       */
+// CONFIGURATION
 
 static int load_configuration(AppConfig *cfg)
 {
@@ -125,10 +125,10 @@ static int load_configuration(AppConfig *cfg)
 
 
 
-/* DEVICE DISCOVERY AND DRIVER SETUP                                   */
+// DEVICE DISCOVERY AND DRIVER SETUP
 
 
-/* Returns a pointer to a static buffer; valid until the next call. */
+// Returns a pointer to a static buffer; valid until the next call.
 static char *find_trinkey_bus(void)
 {
     static char bus_name[64];
@@ -139,23 +139,37 @@ static char *find_trinkey_bus(void)
 
     struct dirent *dir;
     while ((dir = readdir(d)) != NULL) {
-        char path[512];
-        snprintf(path, sizeof(path),
-                 "/sys/bus/usb/devices/%s/idVendor", dir->d_name);
+        char vendor_path[512], prod_path[512];
 
-        FILE *f = fopen(path, "r");
-        if (!f)
+        snprintf(vendor_path, sizeof(vendor_path),
+                 "/sys/bus/usb/devices/%s/idVendor", dir->d_name);
+        snprintf(prod_path, sizeof(prod_path),
+                 "/sys/bus/usb/devices/%s/idProduct", dir->d_name);
+
+
+        FILE *vf = fopen(vendor_path, "r");
+        if (!vf)
+            continue;
+        char vendor[10];
+        int vendor_match = fgets(vendor, sizeof(vendor), vf) && strstr(vendor, "239a");
+        fclose(vf);
+        if (!vendor_match)
             continue;
 
-        char vendor[10];
-        if (fgets(vendor, sizeof(vendor), f) && strstr(vendor, "239a")) {
-            strncpy(bus_name, dir->d_name, sizeof(bus_name) - 1);
-            bus_name[sizeof(bus_name) - 1] = '\0';
-            fclose(f);
-            closedir(d);
-            return bus_name;
-        }
-        fclose(f);
+        FILE *pf = fopen(prod_path, "r");
+        if (!pf)
+            continue;
+        char product[10];
+        int product_match = fgets(product, sizeof(product), pf) && strstr(product, "80ff");
+        fclose(pf);
+        if (!product_match)
+            continue;
+
+
+        strncpy(bus_name, dir->d_name, sizeof(bus_name) - 1);
+        bus_name[sizeof(bus_name) - 1] = '\0';
+        closedir(d);
+        return bus_name;
     }
 
     closedir(d);
@@ -167,50 +181,27 @@ static int setup_driver(const char *bus)
     char interface[128];
     snprintf(interface, sizeof(interface), "%s:1.0", bus);
 
-    /* Unbind cdc_acm if it has claimed the interface. */
-    char path[512];
-    snprintf(path, sizeof(path),
-             "/sys/bus/usb/drivers/cdc_acm/%s", interface);
-    if (access(path, F_OK) == 0) {
-        FILE *f = fopen("/sys/bus/usb/drivers/cdc_acm/unbind", "w");
-        if (f) {
-            fprintf(f, "%s", interface);
-            fclose(f);
-        } else {
-            perror("warning: could not unbind cdc_acm");
-        }
-    }
-
-    /* Bind our custom driver if not already bound. */
-    snprintf(path, sizeof(path),
-             "/sys/bus/usb/drivers/adafruit_trinkey_custom/%s", interface);
-    if (access(path, F_OK) != 0) {
-        FILE *f = fopen("/sys/bus/usb/drivers/adafruit_trinkey_custom/bind", "w");
-        if (!f) {
-            perror("error: could not bind adafruit_trinkey_custom");
-            return -1;
-        }
-        fprintf(f, "%s", interface);
-        fclose(f);
-    }
-
-    snprintf(led_file,   sizeof(led_file),
-             "/sys/bus/usb/devices/%s/trinkey_led",   interface);
+    //Setup interfaces
+    snprintf(led_file, sizeof(led_file),
+             "/sys/bus/usb/devices/%s/trinkey_led", interface);
     snprintf(touch_file, sizeof(touch_file),
              "/sys/bus/usb/devices/%s/trinkey_touch", interface);
 
-    /* Give the driver a moment to create sysfs entries. */
-    usleep(100000);
+    // Give the driver a moment to create sysfs entries
+    int retries = 20;
+    while (retries--) {
+        if (access(led_file, F_OK) == 0 &&
+            access(touch_file, F_OK) == 0)
+            return 0;
+        usleep(100000);
+    }
 
-    if (access(led_file, F_OK) != 0 || access(touch_file, F_OK) != 0)
-        return -1;
-
-    return 0;
+    fprintf(stderr, "error: sysfs files not found after 2s\n");
+    return -1;
 }
 
 
-
-/* MAIN LOOP                                                           */
+// MAIN LOOP
 
 int main(void)
 {
@@ -264,7 +255,7 @@ int main(void)
                     break;
 
                 case MODE_BLINK:
-                    /* 0.5 Hz blink: on for 5 ticks, off for 5 ticks. */
+                    // 0.5 Hz blink: on for 5 ticks, off for 5 ticks.
                     if ((tick % 10) < 5)
                         set_led(config.color_idle[0],
                                 config.color_idle[1],
@@ -274,7 +265,7 @@ int main(void)
                 break;
 
                 case MODE_BREATH:
-                    /* Sine-based fade over a 3-second (30-tick) cycle. */
+                    // Sine-based fade over a 3-second (30-tick) cycle.
                     {
                         double radians  = (tick % 30) * (2.0 * M_PI / 30.0);
                         double intensity = (sin(radians - M_PI / 2.0) + 1.0) / 2.0;

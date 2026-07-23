@@ -1,7 +1,24 @@
+# Prevent cdc_acm bind
+ACTION=="add", SUBSYSTEM=="usb", \
+  ATTR{idVendor}=="239a", ATTR{idProduct}=="80ff", \
+  ENV{ID_MM_DEVICE_IGNORE}="1"
+
+# Eventually unbind cdc_acm
+ACTION=="add", SUBSYSTEM=="usb", \
+  ENV{ID_VENDOR_ID}=="239a", ENV{ID_MODEL_ID}=="80ff", \
+  RUN+="/bin/sh -c 'echo -n %k:1.0 > /sys/bus/usb/drivers/cdc_acm/unbind 2>/dev/null || true'"
+
+# Bind Trinkey driver
+ACTION=="add", SUBSYSTEM=="usb", \
+  ENV{ID_VENDOR_ID}=="239a", ENV{ID_MODEL_ID}=="80ff", \
+  RUN+="/bin/sh -c 'echo -n %k:1.0 > /sys/bus/usb/drivers/adafruit_trinkey_custom/bind 2>/dev/null || true'"
+
+# Starts SystemD service
 ACTION=="add", SUBSYSTEM=="usb", \
   ATTR{idVendor}=="239a", ATTR{idProduct}=="80ff", \
   RUN+="/usr/bin/systemd-run --no-block /bin/systemctl start custom-trinkey.service"
 
+# Stops the service when disconnected
 ACTION=="remove", SUBSYSTEM=="usb", \
   ENV{ID_VENDOR_ID}=="239a", ENV{ID_MODEL_ID}=="80ff", \
   RUN+="/usr/bin/systemd-run --no-block /bin/systemctl stop custom-trinkey.service"
