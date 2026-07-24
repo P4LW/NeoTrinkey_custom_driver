@@ -22,7 +22,7 @@ struct trinkey_dev {
 
 // SYSFS INTERFACE
 
-// cat /sys/.../trinkey_touch — returns 0 or 1
+// cat /sys/.../trinkey_touch  (returns 0 or 1)
 static ssize_t trinkey_touch_show(struct device *dev,
                                   struct device_attribute *attr, char *buf)
 {
@@ -160,8 +160,8 @@ static void trinkey_disconnect(struct usb_interface *interface)
 {
     struct trinkey_dev *tdev = usb_get_intfdata(interface);
 
-    /* Signal disconnection while holding the lock so any in-progress
-     * sysfs operation sees -ENODEV rather than a freed pointer.
+    /* Signal disconnection while holding the lock
+     * to avoid use-after-free
      */
     mutex_lock(&tdev->lock);
     tdev->disconnected = true;
