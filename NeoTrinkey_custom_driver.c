@@ -1,6 +1,7 @@
 #include <linux/kernel.h>
 #include <linux/module.h>
 #include <linux/usb.h>
+#include <linux/hid.h>
 #include <linux/slab.h>
 #include <linux/mutex.h>
 
@@ -8,57 +9,40 @@
 #define PRODUCT_ID 0x80ff
 
 #define CMD_SET_LED   0x01
-#define CMD_GET_TOUCH 0x02
 
-/* Per-device state. The mutex serialises sysfs calls; disconnected
- * is set before freeing to prevent use-after-free on concurrent access.
+/* Per-device state.
+ * touch_state is atomic: it is written from raw_event(), which runs in
+ * interrupt/softirq context (URB completion), so it must not sleep.
+ * The mutex only protects led_store() and the disconnected flag.
  */
 struct trinkey_dev {
-    struct usb_device *udev;
+    struct hid_device *hdev;
     struct mutex       lock;
     bool               disconnected;
+    atomic_t           touch_state;
 };
 
 
 // SYSFS INTERFACE
 
-// cat /sys/.../trinkey_touch  (returns 0 or 1)
+// cat /sys/.../trinkey_touch  (last state received via interrupt)
 static ssize_t trinkey_touch_show(struct device *dev,
                                   struct device_attribute *attr, char *buf)
 {
-    struct usb_interface *intf = to_usb_interface(dev);
-    struct trinkey_dev   *tdev = usb_get_intfdata(intf);
-    int retval;
-    u8 *data;
+    struct hid_device  *hdev = to_hid_device(dev);
+    struct trinkey_dev *tdev = hid_get_drvdata(hdev);
+    u8 state;
 
-    data = kmalloc(1, GFP_KERNEL);
-    if (!data)
-        return -ENOMEM;
-
-    if (mutex_lock_interruptible(&tdev->lock)) {
-        kfree(data);
+    if (mutex_lock_interruptible(&tdev->lock))
         return -ERESTARTSYS;
-    }
     if (tdev->disconnected) {
         mutex_unlock(&tdev->lock);
-        kfree(data);
         return -ENODEV;
     }
-
-    retval = usb_control_msg_recv(tdev->udev, 0, CMD_GET_TOUCH,
-                                  USB_DIR_IN | USB_TYPE_VENDOR | USB_RECIP_DEVICE,
-                                  0, 0, data, 1, 100, GFP_KERNEL);
+    state = (u8)atomic_read(&tdev->touch_state);
     mutex_unlock(&tdev->lock);
 
-    if (retval) {
-        dev_err(dev, "touch read error: %d\n", retval);
-        kfree(data);
-        return retval;
-    }
-
-    retval = sysfs_emit(buf, "%d\n", data[0]);
-    kfree(data);
-    return retval;
+    return sysfs_emit(buf, "%d\n", state);
 }
 
 // echo "R G B" > /sys/.../trinkey_led
@@ -66,10 +50,15 @@ static ssize_t trinkey_led_store(struct device *dev,
                                  struct device_attribute *attr,
                                  const char *buf, size_t count)
 {
-    struct usb_interface *intf = to_usb_interface(dev);
-    struct trinkey_dev   *tdev = usb_get_intfdata(intf);
+    struct hid_device   *hdev = to_hid_device(dev);
+    struct trinkey_dev  *tdev = hid_get_drvdata(hdev);
+    struct usb_interface *intf;
+    struct usb_device   *udev;
     int r, g, b, retval;
     u8 *data;
+
+    if (!hid_is_usb(hdev))
+        return -ENODEV;
 
     if (sscanf(buf, "%d %d %d", &r, &g, &b) != 3)
         return -EINVAL;
@@ -98,7 +87,10 @@ static ssize_t trinkey_led_store(struct device *dev,
         return -ENODEV;
     }
 
-    retval = usb_control_msg_send(tdev->udev, 0, CMD_SET_LED,
+
+    intf = to_usb_interface(hdev->dev.parent);
+    udev = interface_to_usbdev(intf);
+    retval = usb_control_msg_send(udev, 0, CMD_SET_LED,
                                   USB_DIR_OUT | USB_TYPE_VENDOR | USB_RECIP_DEVICE,
                                   0, 0, data, 3, 100, GFP_KERNEL);
     mutex_unlock(&tdev->lock);
@@ -125,73 +117,115 @@ static const struct attribute_group trinkey_group = {
     .attrs = trinkey_attrs,
 };
 
-/* Registered via .dev_groups so the USB core creates and removes
- * sysfs files automatically on probe/disconnect.
+/* struct hid_driver has no dev_groups field (unlike struct usb_driver),
+ * so the sysfs group is created/removed explicitly in probe()/remove().
  */
-static const struct attribute_group *trinkey_groups[] = {
-    &trinkey_group,
-    NULL,
-};
 
 
+// HID CORE CALLBACKS
 
-// USB DRIVER CORE
-
-static int trinkey_probe(struct usb_interface *interface,
-                         const struct usb_device_id *id)
+/* Called by the HID core for every report received on the interrupt IN
+ * endpoint. This runs in interrupt/softirq context (URB completion).
+ */
+static int trinkey_raw_event(struct hid_device *hdev, struct hid_report *report,
+                             u8 *data, int size)
 {
-    struct trinkey_dev *tdev;
+    struct trinkey_dev *tdev = hid_get_drvdata(hdev);
 
-    tdev = kmalloc(sizeof(struct trinkey_dev), GFP_KERNEL);
-    if (!tdev)
-        return -ENOMEM;
+    if (size < 1)
+        return 0;
 
-    tdev->udev         = usb_get_dev(interface_to_usbdev(interface));
-    tdev->disconnected = false;
-    mutex_init(&tdev->lock);
+    atomic_set(&tdev->touch_state, data[0]);
 
-    usb_set_intfdata(interface, tdev);
+    // Wake up anyone doing poll() on the sysfs attribute.
+    sysfs_notify(&hdev->dev.kobj, NULL, "trinkey_touch");
 
-    dev_info(&interface->dev, "device attached\n");
     return 0;
 }
 
-static void trinkey_disconnect(struct usb_interface *interface)
+static int trinkey_probe(struct hid_device *hdev, const struct hid_device_id *id)
 {
-    struct trinkey_dev *tdev = usb_get_intfdata(interface);
+    struct trinkey_dev *tdev;
+    int ret;
 
-    /* Signal disconnection while holding the lock
-     * to avoid use-after-free
+    tdev = devm_kzalloc(&hdev->dev, sizeof(*tdev), GFP_KERNEL);
+    if (!tdev)
+        return -ENOMEM;
+
+    tdev->hdev         = hdev;
+    tdev->disconnected = false;
+    atomic_set(&tdev->touch_state, 0);
+    mutex_init(&tdev->lock);
+    hid_set_drvdata(hdev, tdev);
+
+    ret = hid_parse(hdev);
+    if (ret) {
+        hid_err(hdev, "hid_parse failed: %d\n", ret);
+        return ret;
+    }
+
+    ret = hid_hw_start(hdev, HID_CONNECT_DEFAULT);
+    if (ret) {
+        hid_err(hdev, "hid_hw_start failed: %d\n", ret);
+        return ret;
+    }
+
+    /* hid_hw_open() is what actually starts the interrupt IN transfer
+     * (the HID core submits the URB internally from here).
+     */
+    ret = hid_hw_open(hdev);
+    if (ret) {
+        hid_hw_stop(hdev);
+        return ret;
+    }
+
+    ret = sysfs_create_group(&hdev->dev.kobj, &trinkey_group);
+    if (ret) {
+        hid_hw_close(hdev);
+        hid_hw_stop(hdev);
+        return ret;
+    }
+
+    hid_info(hdev, "device attached\n");
+    return 0;
+}
+
+static void trinkey_remove(struct hid_device *hdev)
+{
+    struct trinkey_dev *tdev = hid_get_drvdata(hdev);
+
+    /* Set the disconnected flag while holding the lock to avoid
+     * use-after-free on concurrent sysfs access.
      */
     mutex_lock(&tdev->lock);
     tdev->disconnected = true;
     mutex_unlock(&tdev->lock);
 
-    usb_set_intfdata(interface, NULL);
-    usb_put_dev(tdev->udev);
+    //send one last notify to avoid processes left on poll() on a disconnected device
+    sysfs_notify(&hdev->dev.kobj, NULL, "trinkey_touch");
 
-    dev_info(&interface->dev, "device disconnected\n");
+    sysfs_remove_group(&hdev->dev.kobj, &trinkey_group);
+    hid_hw_close(hdev);
+    hid_hw_stop(hdev);
 
-    kfree(tdev);
+    hid_info(hdev, "device disconnected\n");
 }
 
-static const struct usb_device_id trinkey_table[] = {
-    { USB_DEVICE(VENDOR_ID, PRODUCT_ID) },
+static const struct hid_device_id trinkey_table[] = {
+    { HID_USB_DEVICE(VENDOR_ID, PRODUCT_ID) },
     { }
 };
-MODULE_DEVICE_TABLE(usb, trinkey_table);
+MODULE_DEVICE_TABLE(hid, trinkey_table);
 
-static struct usb_driver trinkey_driver = {
+static struct hid_driver trinkey_driver = {
     .name       = "adafruit_trinkey_custom",
-    .probe      = trinkey_probe,
-    .disconnect = trinkey_disconnect,
     .id_table   = trinkey_table,
-    .dev_groups = trinkey_groups,
+    .probe      = trinkey_probe,
+    .remove     = trinkey_remove,
+    .raw_event  = trinkey_raw_event,
 };
-
-module_usb_driver(trinkey_driver);
+module_hid_driver(trinkey_driver);
 
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Palu&&Passo");
-MODULE_DESCRIPTION("Custom USB driver for NeoKey Trinkey");
-
+MODULE_DESCRIPTION("Custom HID driver for NeoKey Trinkey");
