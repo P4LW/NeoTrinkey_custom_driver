@@ -5,7 +5,6 @@
 #include <signal.h>
 
 #define CONFIG_FILE "/etc/trinkey/config"
-#define PID_FILE    "/tmp/trinkey.pid"
 
 static void print_usage(const char *prog)
 {
