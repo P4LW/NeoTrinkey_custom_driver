@@ -19,22 +19,50 @@ static void print_usage(const char *prog)
             prog);
 }
 
+#include <dirent.h>
+
 static void notify_daemon(void)
 {
-    FILE *f = fopen("/run/trinkey/trinkey.pid", "r");
-    if (!f) {
-        fprintf(stderr, "warning: daemon not running\n");
+    DIR *d = opendir("/run/trinkey/");
+    if (!d) {
+        FILE *f = fopen("/run/trinkey/trinkey.pid", "r");
+        if (!f) {
+            fprintf(stderr, "warning: no running daemon found\n");
+            return;
+        }
+        int pid;
+        if (fscanf(f, "%d", &pid) == 1) {
+            kill(pid, SIGHUP);
+        }
+        fclose(f);
         return;
     }
-    int pid;
-    int ok = (fscanf(f, "%d", &pid) == 1);
-    fclose(f);
-    if (!ok) {
-        fprintf(stderr, "warning: could not read PID\n");
-        return;
+
+    struct dirent *entry;
+    int signaled = 0;
+    while ((entry = readdir(d)) != NULL) {
+        if (strstr(entry->d_name, ".pid") != NULL) {
+            char pid_path[600];
+            snprintf(pid_path, sizeof(pid_path), "/run/trinkey/%s", entry->d_name);
+            FILE *f = fopen(pid_path, "r");
+            if (f) {
+                int pid;
+                if (fscanf(f, "%d", &pid) == 1) {
+                    if (kill(pid, SIGHUP) == 0) {
+                        signaled++;
+                    }
+                }
+                fclose(f);
+            }
+        }
     }
-    if (kill(pid, SIGHUP) != 0)
-        perror("warning: could not signal daemon");
+    closedir(d);
+
+    if (signaled == 0) {
+        fprintf(stderr, "warning: no running daemon instance notified\n");
+    } else {
+        printf("Notified %d running daemon instance(s)\n", signaled);
+    }
 }
 
 // Check wether the parameters given by the user are valid
