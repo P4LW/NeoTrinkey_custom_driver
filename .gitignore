@@ -1,0 +1,20 @@
+# Compiled Binaries
+trinkey_app
+trinkeyctl
+trinkey_sub_logger
+
+# Kernel Build Artifacts
+*.o
+*.ko
+*.mod
+*.mod.c
+*.symvers
+*.order
+.tmp_versions/
+.*.cmd
+.cache.mk
+
+# Editor & Temp files
+*.swp
+*~
+.*.swp
