@@ -18,6 +18,3 @@ trinkey_sub_logger
 *.swp
 *~
 .*.swp
-
-#other
-report_neotrinkey_custom_driver.md
