@@ -216,11 +216,16 @@ static int setup_driver(const char *target_device)
         dev_name = dev_name ? dev_name + 1 : base_dir;
         snprintf(pid_file, sizeof(pid_file), "/run/trinkey/trinkey_%s.pid", dev_name);
 
-        if (access(led_file, F_OK) == 0 && access(touch_file, F_OK) == 0) {
-            printf("Target device bound: %s\n", base_dir);
-            return 0;
+        int retries = 20;
+        while (retries--) {
+            if (access(led_file, F_OK) == 0 && access(touch_file, F_OK) == 0) {
+                printf("Target device bound: %s\n", base_dir);
+                return 0;
+            }
+            usleep(100000);
         }
-        fprintf(stderr, "error: specified trinkey sysfs files not found at %s\n", base_dir);
+
+        fprintf(stderr, "error: specified trinkey sysfs files not found at %s after 2s\n", base_dir);
         return -1;
     }
 

@@ -1,10 +1,9 @@
 [Unit]
 Description=NeoTrinkey Monitor for %I
-BindsTo=sys-subsystem-hid-devices-%i.device
-After=sys-subsystem-hid-devices-%i.device
 
 [Service]
 Type=simple
+User=root
 ExecStart=/usr/local/bin/trinkey_app /sys/bus/hid/devices/%I
 Restart=on-failure
 RestartSec=2
