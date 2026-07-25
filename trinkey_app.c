@@ -62,7 +62,7 @@ static void set_led(int r, int g, int b)
     fprintf(f, "%d %d %d\n", r, g, b);
     fclose(f);
 
-    printf("DEBUG: writing color %d %d %d on led\n", r, g, b);
+    //printf("DEBUG: writing color %d %d %d on led\n", r, g, b);
 }
 
 // Wrapper around set_led() that skips the write (and the sysfs round-trip
