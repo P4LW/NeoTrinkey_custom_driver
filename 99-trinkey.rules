@@ -1,9 +1,9 @@
-# Start SystemD service when device is connected
+# Start SystemD template service for each connected NeoTrinkey (%k is the kernel device name, e.g., 0003:239A:80FF.0001)
 ACTION=="add", SUBSYSTEM=="hid", \
   ATTRS{idVendor}=="239a", ATTRS{idProduct}=="80ff", \
-  RUN+="/usr/bin/systemd-run --no-block /bin/systemctl start custom-trinkey.service"
+  RUN+="/usr/bin/systemd-run --no-block /bin/systemctl start custom-trinkey@%k.service"
 
-# Stop service when disconnected
+# Stop service for the specific device when disconnected
 ACTION=="remove", SUBSYSTEM=="hid", \
   ATTRS{idVendor}=="239a", ATTRS{idProduct}=="80ff", \
-  RUN+="/usr/bin/systemd-run --no-block /bin/systemctl stop custom-trinkey.service"
+  RUN+="/usr/bin/systemd-run --no-block /bin/systemctl stop custom-trinkey@%k.service"

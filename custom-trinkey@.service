@@ -1,9 +1,10 @@
 [Unit]
-Description=NeoTrinkey Monitor
+Description=NeoTrinkey Monitor for %I
 
 [Service]
 Type=simple
-ExecStart=/usr/local/bin/trinkey_app
+User=root
+ExecStart=/usr/local/bin/trinkey_app /sys/bus/hid/devices/%I
 Restart=on-failure
 RestartSec=2
 StartLimitBurst=0
