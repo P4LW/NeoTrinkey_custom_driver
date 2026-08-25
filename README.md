@@ -4,30 +4,30 @@
 [![C Standard](https://img.shields.io/badge/Language-C11-green.svg)](https://en.wikipedia.org/wiki/C11_(C_standard_revision))
 [![License](https://img.shields.io/badge/License-GPLv2-orange.svg)](LICENSE)
 
-Progetto per il corso di **Sistemi Operativi Avanzati** (Politecnico di Milano).  
-Implementa una pila software completa (*full-stack embedded & system programming*) per la gestione avanzata, reattiva e multi-dispositivo della scheda **Adafruit NeoKey Trinkey** (USB Vendor ID `0x239a`, Product ID `0x80ff`).
+Project for the **Advanced Operating Systems** course (Politecnico di Milano).  
+Implements a complete software stack (*full-stack embedded & system programming*) for advanced, reactive, and multi-device management of the **Adafruit NeoKey Trinkey** board (USB Vendor ID `0x239a`, Product ID `0x80ff`).
 
 ---
 
-## 🌟 Caratteristiche Principali
+## 🌟 Main Features
 
-- **Driver Kernel HID Reattivo (`NeoTrinkey_custom_driver.c`)**: Driver di modulo per il kernel Linux basato su `hid_driver`. Invece del polling periodico, gestisce gli eventi in contesto di interrupt (`raw_event`) notificando istantaneamente lo spazio utente tramite `sysfs_notify()`.
-- **Supporto Multi-Dispositivo Isolato via Systemd**: Integrazione nativa tramite **Systemd Template Unit** (`custom-trinkey@.service`) e regole **Udev** (`99-trinkey.rules`). Ogni chiavetta USB inserita avvia automaticamente un'istanza isolata di `trinkey_app`.
-- **Daemon Spazio Utente Event-Driven (`trinkey_app.c`)**: Daemon in ascolto mediante `poll()` sugli attributi sysfs. Supporta animazioni LED (`static`, `blink`, `breath`) e risposta immediata al tocco capacitivo.
-- **Utility di Controllo CLI (`trinkeyctl.c`)**: Tool a riga di comando per aggiornare la configurazione in `/etc/trinkey/config` ed inviare notifiche `SIGHUP` a tutte le istanze del daemon attive.
+- **Reactive HID Kernel Driver (`NeoTrinkey_custom_driver.c`)**: Module driver for the Linux kernel based on `hid_driver`. Instead of periodic polling, it handles events in an interrupt context (`raw_event`) instantly notifying userspace via `sysfs_notify()`.
+- **Isolated Multi-Device Support via Systemd**: Native integration using **Systemd Template Unit** (`custom-trinkey@.service`) and **Udev** rules (`99-trinkey.rules`). Every inserted USB key automatically starts an isolated instance of `trinkey_app`.
+- **Event-Driven Userspace Daemon (`trinkey_app.c`)**: Daemon listening via `poll()` on sysfs attributes. Supports LED animations (`static`, `blink`, `breath`) and immediate response to capacitive touch.
+- **CLI Control Utility (`trinkeyctl.c`)**: Command-line tool to update the configuration in `/etc/trinkey/config` and send `SIGHUP` notifications to all active daemon instances.
 
 ---
 
-## 🏗️ Architettura del Sistema
+## 🏗️ System Architecture
 
 ```mermaid
 flowchart TD
-    subgraph Hardware ["Hardware Periferica"]
-        HW_LED["LED NeoPixel (Pin 27)"]
-        HW_TOUCH["Sensore Touch Capacitivo (Pin 1)"]
+    subgraph Hardware ["Peripheral Hardware"]
+        HW_LED["NeoPixel LED (Pin 27)"]
+        HW_TOUCH["Capacitive Touch Sensor (Pin 1)"]
     end
 
-    subgraph Firmware ["Firmware Microcontrollore"]
+    subgraph Firmware ["Microcontroller Firmware"]
         TINYUSB["TinyUSB Framework"]
         CMD_LED["0x01: CMD_SET_LED"]
         HID_INT["HID Interrupt IN Report"]
@@ -40,18 +40,18 @@ flowchart TD
         SYSFS_LED["sysfs: trinkey_led (WO)"]
     end
 
-    subgraph Systemd_Udev ["Automazione OS (Udev + Systemd)"]
+    subgraph Systemd_Udev ["OS Automation (Udev + Systemd)"]
         UDEV["99-trinkey.rules"]
         SERVICE["custom-trinkey@%k.service"]
     end
 
-    subgraph Userspace ["Spazio Utente"]
-        DAEMON["trinkey_app (Istanza per Device)"]
-        CLI["trinkeyctl (Strumento CLI)"]
+    subgraph Userspace ["Userspace"]
+        DAEMON["trinkey_app (Instance per Device)"]
+        CLI["trinkeyctl (CLI Tool)"]
         CONF["/etc/trinkey/config"]
     end
 
-    HW_TOUCH -->|"Interruzione Touch"| HID_INT
+    HW_TOUCH -->|"Touch Interrupt"| HID_INT
     HID_INT -->|"HID Interrupt Report"| RAW_EVT
     RAW_EVT -->|"sysfs_notify()"| SYSFS_TOUCH
     CMD_LED -->|"Control Transfer"| HW_LED
@@ -59,45 +59,45 @@ flowchart TD
     UDEV -->|"add/remove %k"| SERVICE
     SERVICE -->|"ExecStart per device"| DAEMON
 
-    DAEMON -->|"poll() bloccante"| SYSFS_TOUCH
-    DAEMON -->|"Scrittura RGB"| SYSFS_LED
+    DAEMON -->|"blocking poll()"| SYSFS_TOUCH
+    DAEMON -->|"RGB Write"| SYSFS_LED
     SYSFS_LED -->|"usb_control_msg_send"| CMD_LED
 
-    CLI -->|"Aggiorna conf"| CONF
-    CLI -->|"SIGHUP a /run/trinkey/*.pid"| DAEMON
+    CLI -->|"Update conf"| CONF
+    CLI -->|"SIGHUP to /run/trinkey/*.pid"| DAEMON
 ```
 
 ---
 
-## 📁 Struttura del Progetto
+## 📁 Project Structure
 
 ```
 .
-├── NeoTrinkey_custom_driver.c   # Modulo Kernel Linux (HID Driver)
-├── trinkey_app.c                # Daemon spazio utente (Event-driven poll)
-├── trinkeyctl.c                 # Utility CLI di configurazione
-├── 99-trinkey.rules             # Regole Udev per bind e avvio istanze systemd
-├── custom-trinkey@.service      # Unità template Systemd per istanze dinamiche
-├── firmware.cpp                 # Codice firmware microcontrollore (Arduino/TinyUSB)
-├── Makefile                     # Buildscript per modulo kernel e app spazio utente
-├── README.md                    # Documentazione del progetto
-└── report_neotrinkey_custom_driver.md # Relazione tecnica di progetto
+├── NeoTrinkey_custom_driver.c   # Linux Kernel Module (HID Driver)
+├── trinkey_app.c                # Userspace Daemon (Event-driven poll)
+├── trinkeyctl.c                 # Configuration CLI Utility
+├── 99-trinkey.rules             # Udev rules to bind and start systemd instances
+├── custom-trinkey@.service      # Systemd template unit for dynamic instances
+├── firmware.cpp                 # Microcontroller firmware code (Arduino/TinyUSB)
+├── Makefile                     # Buildscript for kernel module and userspace apps
+├── README.md                    # Project documentation
+└── report_neotrinkey_custom_driver.md # Technical project report
 ```
 
 ---
 
-## 🛠️ Compilazione ed Installazione
+## 🛠️ Compilation and Installation
 
-### 1. Requisiti di Sistema
-Assicurarsi di avere installato i pacchetti di sviluppo per il kernel in uso e il compilatore GCC:
+### 1. System Requirements
+Ensure you have the development packages for the running kernel and the GCC compiler installed:
 
 ```bash
 sudo apt update
 sudo apt install build-essential linux-headers-$(uname -r)
 ```
 
-### 2. Compilazione
-Per compilare sia il modulo del kernel (`NeoTrinkey_custom_driver.ko`) sia i programmi nello spazio utente (`trinkey_app`, `trinkeyctl`):
+### 2. Compilation
+To compile both the kernel module (`NeoTrinkey_custom_driver.ko`) and the userspace programs (`trinkey_app`, `trinkeyctl`):
 
 ```bash
 make all
@@ -105,58 +105,58 @@ make all
 
 ---
 
-## ⚙️ Deploy e Configurazione di Sistema
+## ⚙️ System Deployment and Configuration
 
-### 1. Installazione dei Binari e delle Unità Systemd
+### 1. Installation of Binaries and Systemd Units
 
-Copia i binari compilati e i file di configurazione nelle directory di sistema:
+Copy the compiled binaries and configuration files to the system directories:
 
 ```bash
-# Copia delle applicazioni utente
+# Copy user applications
 sudo cp trinkey_app /usr/local/bin/
 sudo cp trinkeyctl /usr/local/bin/
 sudo chmod +x /usr/local/bin/trinkey_app /usr/local/bin/trinkeyctl
 
-# Installazione del Servizio Systemd Template
+# Install Systemd Template Service
 sudo cp custom-trinkey@.service /etc/systemd/system/
 sudo systemctl daemon-reload
 
-# Installazione delle Regole Udev
+# Install Udev Rules
 sudo cp 99-trinkey.rules /etc/udev/rules.d/
 sudo udevadm control --reload-rules
 sudo udevadm trigger
 ```
 
-### 2. Creazione della Directory di Configurazione e Permessi Utente
+### 2. Configuration Directory Creation and User Permissions
 
-Crea il file di configurazione globale ed assegna i permessi necessari:
+Create the global configuration file and assign the necessary permissions:
 
 ```bash
-# Creazione cartella e file di configurazione
+# Create configuration folder and file
 sudo mkdir -p /etc/trinkey
 sudo touch /etc/trinkey/config
 
-# Creazione gruppo utenti 'trinkey' e assegnazione permessi
+# Create 'trinkey' user group and assign permissions
 sudo groupadd -f trinkey
 sudo usermod -aG trinkey $USER
 sudo chown -R root:trinkey /etc/trinkey
 sudo chmod 775 /etc/trinkey
 sudo chmod 664 /etc/trinkey/config
 
-# Configurazione del bit SUID per trinkeyctl (opzionale per permettere esecuzione senza sudo)
+# Configure SUID bit for trinkeyctl (optional to allow execution without sudo)
 sudo chown root:trinkey /usr/local/bin/trinkeyctl
 sudo chmod 4755 /usr/local/bin/trinkeyctl
 ```
 
-### 3. Caricamento del Modulo Kernel
+### 3. Loading the Kernel Module
 
-Per caricare il modulo del kernel ed abilitarlo all'avvio:
+To load the kernel module and enable it at boot:
 
 ```bash
-# Caricamento manuale
+# Manual load
 sudo insmod NeoTrinkey_custom_driver.ko
 
-# (Opzionale) Installazione permanente del modulo
+# (Optional) Permanent module installation
 sudo cp NeoTrinkey_custom_driver.ko /lib/modules/$(uname -r)/kernel/drivers/hid/
 sudo depmod -a
 echo "NeoTrinkey_custom_driver" | sudo tee /etc/modules-load.d/trinkey.conf
@@ -164,49 +164,49 @@ echo "NeoTrinkey_custom_driver" | sudo tee /etc/modules-load.d/trinkey.conf
 
 ---
 
-## 🕹️ Utilizzo di `trinkeyctl`
+## 🕹️ Using `trinkeyctl`
 
-L'utility `trinkeyctl` permette di modificare il comportamento dei LED e le risposte al tocco senza interrompere i servizi in esecuzione.
+The `trinkeyctl` utility allows you to modify the LED behavior and touch responses without interrupting the running services.
 
-### Opzioni disponibili:
-- `-m <mode>` : Modalità LED a riposo (`static`, `blink`, `breath`)
-- `-i "R G B"` : Colore a riposo (valori RGB `0..255`)
-- `-t "R G B"` : Colore al tocco (valori RGB `0..255`)
+### Available options:
+- `-m <mode>` : Idle LED mode (`static`, `blink`, `breath`)
+- `-i "R G B"` : Idle color (RGB values `0..255`)
+- `-t "R G B"` : Touch color (RGB values `0..255`)
 
-### Esempi di utilizzo:
+### Usage examples:
 
 ```bash
-# Imposta colore di riposo Blu e colore di tocco Verde in modalità statica
+# Set idle color to Blue and touch color to Green in static mode
 trinkeyctl -m static -i "0 0 255" -t "0 255 0"
 
-# Imposta effetto effetto dissolvenza "breath" Rosso con tocco Bianco
+# Set Red "breath" fade effect with White touch
 trinkeyctl -m breath -i "255 0 0" -t "255 255 255"
 
-# Imposta lampeggio "blink" Giallo
+# Set Yellow "blink" flashing
 trinkeyctl -m blink -i "255 255 0" -t "0 255 0"
 ```
 
-Quando si esegue `trinkeyctl`, il file `/etc/trinkey/config` viene aggiornato e viene inviato un segnale `SIGHUP` a tutte le istanze attive di `trinkey_app`, applicando la modifica istantaneamente su tutte le chiavette NeoTrinkey collegate.
+When you execute `trinkeyctl`, the `/etc/trinkey/config` file is updated, and a `SIGHUP` signal is sent to all active instances of `trinkey_app`, applying the change instantly to all connected NeoTrinkey keys.
 
 ---
 
-## 🔍 Verifica del Funzionamento Multi-Dispositivo
+## 🔍 Verifying Multi-Device Operation
 
-Per verificare lo stato dei servizi gestiti da Systemd per ciascuna NeoTrinkey collegata:
+To check the status of the services managed by Systemd for each connected NeoTrinkey:
 
 ```bash
-# Elenco di tutti i servizi Trinkey attivi
+# List all active Trinkey services
 systemctl list-units "custom-trinkey@*"
 
-# Visualizza i log di un'istanza specifica
+# View logs for a specific instance
 journalctl -u custom-trinkey@0003:239A:80FF.0001.service -f
 ```
 
 ---
 
-## 👥 Autori
+## 👥 Authors
 
 - **Federico Paludetti** (`P4LW`)
 - **Riccardo Passolunghi** (`passo`)
 
-*Progetto sviluppato per il corso di Sistemi Operativi Avanzati.*
+*Project developed for the Advanced Operating Systems course.*
